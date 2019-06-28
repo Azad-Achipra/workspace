@@ -1,0 +1,1379 @@
+Index: flt-operations/flt-ops-flightdata/flt-ops-flightdata-domain/src/main/java/com/tops/flight/operations/flightdata/domain/dsimpl/FlightHistoryDSImpl.java
+===================================================================
+--- flt-operations/flt-ops-flightdata/flt-ops-flightdata-domain/src/main/java/com/tops/flight/operations/flightdata/domain/dsimpl/FlightHistoryDSImpl.java	(revision 2871)
++++ flt-operations/flt-ops-flightdata/flt-ops-flightdata-domain/src/main/java/com/tops/flight/operations/flightdata/domain/dsimpl/FlightHistoryDSImpl.java	(working copy)
+@@ -1939,7 +1939,7 @@
+ 		return flightHistorySOs;
+ 	}
+ 
+-	private String getChangeDescription(FlightChangeType flightChangeType, FlightIndicatorsSO newFlightIndicatorsSO, String oldThresholdTime) {
++	public String getChangeDescription(FlightChangeType flightChangeType, FlightIndicatorsSO newFlightIndicatorsSO, String oldThresholdTime) {
+ 
+ 		String changeDescription = null;
+ 
+Index: flt-operations/flt-ops-flightdata/flt-ops-flightdata-domain/src/main/java/com/tops/flight/operations/flightdata/domain/dsimpl/FlightIndicatorsDSImpl.java
+===================================================================
+--- flt-operations/flt-ops-flightdata/flt-ops-flightdata-domain/src/main/java/com/tops/flight/operations/flightdata/domain/dsimpl/FlightIndicatorsDSImpl.java	(revision 2871)
++++ flt-operations/flt-ops-flightdata/flt-ops-flightdata-domain/src/main/java/com/tops/flight/operations/flightdata/domain/dsimpl/FlightIndicatorsDSImpl.java	(working copy)
+@@ -1,28 +1,7 @@
+ package com.tops.flight.operations.flightdata.domain.dsimpl;
+ 
+-import java.util.ArrayList;
+-import java.util.Collections;
+-import java.util.Date;
+-import java.util.HashMap;
+-import java.util.HashSet;
+ import java.util.List;
+-import java.util.Map;
+-import java.util.Set;
+ 
+-import org.apache.commons.lang.ArrayUtils;
+-import org.slf4j.Logger;
+-import org.slf4j.LoggerFactory;
+-import org.springframework.beans.factory.annotation.Autowired;
+-import org.springframework.data.domain.Page;
+-import org.springframework.data.domain.Pageable;
+-import org.springframework.data.jpa.domain.Specification;
+-import org.springframework.stereotype.Component;
+-import org.springframework.util.CollectionUtils;
+-import org.springframework.validation.BeanPropertyBindingResult;
+-import org.springframework.validation.ValidationUtils;
+-
+-
+-
+ import com.qr.jadu.common.constants.CrudIndicator;
+ import com.qr.jadu.common.util.GenericUtils;
+ import com.qr.jadu.ui.common.PageData;
+@@ -60,7 +39,19 @@
+ import com.tops.masters.operation.catering.services.FlightCateringUpliftService;
+ import com.tops.masters.operation.catering.services.schemaobjects.FlightCateringUpliftSO;
+ 
++import org.apache.commons.lang.ArrayUtils;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.data.domain.Page;
++import org.springframework.data.domain.Pageable;
++import org.springframework.data.jpa.domain.Specification;
++import org.springframework.stereotype.Component;
++import org.springframework.util.CollectionUtils;
++import org.springframework.validation.BeanPropertyBindingResult;
++import org.springframework.validation.ValidationUtils;
+ 
++
+ /**
+  * Service Implementation method
+  * @author 
+@@ -205,7 +196,7 @@
+ 	 * @return
+ 	 */
+ 	private FlightIndicators buildEntityFrom(FlightIndicatorsSO flightIndicatorsSO) {
+-		FlightIndicators flightIndicators  = new FlightIndicators();
++		FlightIndicators flightIndicators  = FlightIndicators.createInstance();
+ 		if (ResultUtil.isNEW(flightIndicatorsSO)) { 
+ 			flightIndicatorsSO.setId(null);  
+ 		}
+@@ -657,7 +648,7 @@
+ 
+ 				for (Long flightId : createIndicatorFlightIdList) {
+ 					counter++;
+-					FlightIndicators flightIndicator = new FlightIndicators();
++					FlightIndicators flightIndicator = FlightIndicators.createInstance();
+ 					flightIndicator.setFlightScheduleId(flightId);
+ 					flightIndicator.setIndicatorCode(indCode);
+ 					flightIndicator.setIndicatorType(indType);
+@@ -943,7 +934,7 @@
+ 	@Override
+ 	public Map<Long,List<FlightIndicatorsSO>> getFlightIndicatorsWithDescForMutipleFlights(Set<Long> flightScheduleIds)
+ 	{
+-		List<Object[]>						flightIndicatorsList	= flightIndicatorsRepo.getFltIndicatorsWithDescForMultipleFlights(flightScheduleIds);
++		List<Object[]>	flightIndicatorsList	= flightIndicatorsRepo.getFltIndicatorsWithDescForMultipleFlights(flightScheduleIds);
+ 		Map<Long,List<FlightIndicatorsSO>>	returnMap				= new HashMap<Long,List<FlightIndicatorsSO>>();
+ 		if (!CollectionUtils.isEmpty(flightIndicatorsList))
+ 		{
+@@ -961,6 +952,16 @@
+ 		}
+ 		return returnMap;
+ 	}
++	
++	public void revokeDeletedIndicators(List<Long> indicatorIds) {
++		List<FlightIndicators> flightIndicatorsList = flightIndicatorsRepo.getFlightIndicatorsIncludingDeleted(indicatorIds);
++		
++		for (FlightIndicators flightIndicators : flightIndicatorsList) {
++			flightIndicators.setDeleteInd(Boolean.FALSE);
++			flightIndicatorsRepo.save(flightIndicators);
++		}
++		
++	}
+ 
+ }
+ 
+Index: flt-operations/flt-ops-flightdata/flt-ops-flightdata-domain/src/main/java/com/tops/flight/operations/flightdata/domain/repository/api/FlightIndicatorsRepo.java
+===================================================================
+--- flt-operations/flt-ops-flightdata/flt-ops-flightdata-domain/src/main/java/com/tops/flight/operations/flightdata/domain/repository/api/FlightIndicatorsRepo.java	(revision 2871)
++++ flt-operations/flt-ops-flightdata/flt-ops-flightdata-domain/src/main/java/com/tops/flight/operations/flightdata/domain/repository/api/FlightIndicatorsRepo.java	(working copy)
+@@ -68,9 +68,15 @@
+ 	
+ 	@Query("select fltInd, fltMstInd.description from FlightIndicators fltInd,FlightMasterIndicator fltMstInd WHERE fltInd.flightScheduleId IN (:flightScheduleIds)"
+ 			  +" AND fltInd.indicatorCode=fltMstInd.code")
+-		public List<Object[]> getFltIndicatorsWithDescForMultipleFlights(@Param("flightScheduleIds") Set<Long> flightScheduleIds);
++	public List<Object[]> getFltIndicatorsWithDescForMultipleFlights(@Param("flightScheduleIds") Set<Long> flightScheduleIds);
+ 	
+-		@Query("SELECT fltInd.flightScheduleId FROM FlightIndicators fltInd WHERE fltInd.indicatorCode IN (:indicatorCodeList) AND fltInd.flightScheduleId IN ("
+-				+ "SELECT flightSchedule.id FROM FlightSchedule flightSchedule WHERE flightSchedule.std BETWEEN :startTime AND :endTime)")
+-		public List<Long> getFlightSchIdListByIndicatorCodeAndTimePeriod(@Param("startTime") Date startTime, @Param("endTime") Date endTime, @Param("indicatorCodeList") List<String> indicatorCodeList);
+-		}
+\ No newline at end of file
++	@Query("SELECT fltInd.flightScheduleId FROM FlightIndicators fltInd WHERE fltInd.indicatorCode IN (:indicatorCodeList) AND fltInd.flightScheduleId IN ("
++		+ "SELECT flightSchedule.id FROM FlightSchedule flightSchedule WHERE flightSchedule.std BETWEEN :startTime AND :endTime)")
++	public List<Long> getFlightSchIdListByIndicatorCodeAndTimePeriod(@Param("startTime") Date startTime, @Param("endTime") Date endTime, @Param("indicatorCodeList") List<String> indicatorCodeList);
++		
++
++	@Query("select flightIndicators from FlightIndicators flightIndicators where flightIndicators.id in (:idList) and flightIndicators.deleteInd is not null")
++	public List<FlightIndicators> getFlightIndicatorsIncludingDeleted(@Param("idList") List<Long> idList);
++
++}
++
+Index: flt-operations/flt-ops-flightdata/flt-ops-flightdata-entityws/src/main/java/com/tops/flight/operations/flightdata/domain/advisor/entity/FlightEntityAdvisor.java
+===================================================================
+--- flt-operations/flt-ops-flightdata/flt-ops-flightdata-entityws/src/main/java/com/tops/flight/operations/flightdata/domain/advisor/entity/FlightEntityAdvisor.java	(revision 2871)
++++ flt-operations/flt-ops-flightdata/flt-ops-flightdata-entityws/src/main/java/com/tops/flight/operations/flightdata/domain/advisor/entity/FlightEntityAdvisor.java	(working copy)
+@@ -24,7 +24,12 @@
+ import java.util.Map.Entry;
+ import java.util.Set;
+ 
++import com.tops.flight.operations.flightdata.domain.entity.live.LiveFlightIndicators;
++import com.tops.flight.operations.flightdata.domain.entity.ws.WSFlightIndicators;
++import com.tops.flight.operations.flightdata.domain.repository.api.live.LiveFlightIndicatorRepo;
++import com.tops.flight.operations.flightdata.domain.repository.api.ws.WSFlightIndicatorRepo;
+ import com.tops.masters.common.util.CommonCollectionUtil;
++
+ import org.apache.commons.collections.MapUtils;
+ import org.apache.commons.lang3.StringUtils;
+ import org.slf4j.Logger;
+@@ -36,6 +41,7 @@
+ 
+ import com.google.common.collect.Lists;
+ import com.qr.jadu.common.application.TransactionContextHolder;
++import com.qr.jadu.common.constants.CrudIndicator;
+ import com.qr.jadu.common.util.GenericUtils;
+ import com.qr.jadu.validation.ValidationException;
+ import com.tops.common.eda.service.EventService;
+@@ -102,10 +108,13 @@
+ import com.tops.flight.operations.flightdata.domain.repository.api.ws.WSMovementTimingsRepo;
+ import com.tops.flight.operations.flightdata.services.FlightActionService;
+ import com.tops.flight.operations.flightdata.services.FlightHistoryService;
++import com.tops.flight.operations.flightdata.services.FlightIndicatorsService;
+ import com.tops.flight.operations.flightdata.services.FlightOpsService;
+ import com.tops.flight.operations.flightdata.services.FlightScheduleService;
+ import com.tops.flight.operations.flightdata.services.schemaobjects.FlightDetailsMvtInfoSO;
+ import com.tops.flight.operations.flightdata.services.schemaobjects.FlightDivertSO;
++import com.tops.flight.operations.flightdata.services.schemaobjects.FlightIndicatorsListSO;
++import com.tops.flight.operations.flightdata.services.schemaobjects.FlightIndicatorsSO;
+ import com.tops.flight.operations.flightdata.services.schemaobjects.FlightReturnSO;
+ import com.tops.flight.operations.flightdata.services.schemaobjects.FlightScheduleSO;
+ import com.tops.flight.operations.flightdata.services.schemaobjects.FlightScheduleUpdateProcessSO;
+@@ -152,6 +161,9 @@
+ 	LiveMovementTimingsRepo liveMovementTimingsRepo;
+ 
+ 	@Autowired
++	LiveFlightIndicatorRepo liveFlightIndicatorRepo;
++
++	@Autowired
+ 	WSFlightScheduleRepo wsFlightScheduleRepo;
+ 
+ 	@Autowired
+@@ -170,6 +182,9 @@
+ 	WSMovementTimingsRepo wsMovementTimingsRepo;
+ 
+ 	@Autowired
++	WSFlightIndicatorRepo wsFlightIndicatorsRepo;
++
++	@Autowired
+ 	private FlightScheduleDS flightScheduleDS;
+ 	
+ 	@Autowired
+@@ -185,6 +200,9 @@
+ 	private FlightHistoryService flightHistoryService;
+ 	
+ 	@Autowired
++	FlightIndicatorsService flightIndicatorsService;
++	
++	@Autowired
+ 	private FlightHistoryDS flightHistoryDS;
+ 	
+ 	@Autowired
+@@ -255,6 +273,7 @@
+ 			List<LiveFlightChangedMetaData> liveFlightChangedMetaDataList = liveFlightChangedMetaDataRepo.findByFlightScheduleIds(entityIds);
+ 			List<LiveFlightDelay> liveFlightDelayList = liveFlightDelayRepo.findByFlightScheduleIds(entityIds);
+ 			List<LiveMovementTimings> liveMovementTimingsList = liveMovementTimingsRepo.findByFlightScheduleIds(entityIds);
++			List<LiveFlightIndicators> liveFlightIndicatorList = liveFlightIndicatorRepo.findByFlightScheduleIds(entityIds);
+ 
+ 			// Copy Flight Schedule
+ 			if (!CollectionUtils.isEmpty(liveFlightScheduleList)) {
+@@ -508,7 +527,50 @@
+ 				wsMovementTimingsRepo.getEntityManager().flush();
+ 			}
+ 			
++			// Copy Flight Indicators
++			if (!CollectionUtils.isEmpty(liveFlightIndicatorList)) {
+ 			
++				wsEntityIds = new HashSet<>(liveFlightIndicatorList.size());
++				List<WSFlightIndicators> wsFlightIndicatorList = new ArrayList<>(liveFlightIndicatorList.size());
++
++				// COPY LiveFlightIndicator to WSFlightIndicator
++				for (LiveFlightIndicators lFlightIndicator : liveFlightIndicatorList) {
++					WSFlightIndicators wsFlightIndicators = new WSFlightIndicators();
++					ResultUtil.copyProperties(wsFlightIndicators, lFlightIndicator, Convertor.SPRING);
++					wsFlightIndicators.setSystemChangeInd(isSystemChange);
++					wsFlightIndicatorList.add(wsFlightIndicators);
++					wsEntityIds.add(wsFlightIndicators.getId());
++					//flightIdDelayPresentList.add(wsFlightIndicators.getFlightScheduleId());
++				}
++
++				List<WSFlightIndicators> existingWSFlightIndicators = wsFlightIndicatorsRepo.findAll(new SearchUtil<WSFlightIndicators>().getSpecification(getWSEntitySearchObject(wsEntityIds)));
++
++				// Create a map of existing WSFlightIndicators
++				Map<Long, WSFlightIndicators> existingWSFlightIndicatorMap = new HashMap<>();
++				if (!CollectionUtils.isEmpty(existingWSFlightIndicators)) {
++					for (WSFlightIndicators wsFlightIndicators : existingWSFlightIndicators) {
++						existingWSFlightIndicatorMap.put(wsFlightIndicators.getId(), wsFlightIndicators);
++					}
++				}
++
++				// MERGE or PERSIST WSFlightIndicators
++				for (WSFlightIndicators wsFlightIndicators : wsFlightIndicatorList) {
++					if (existingWSFlightIndicatorMap.containsKey(wsFlightIndicators.getId())) {
++						WSFlightIndicators wsFlightIndicatorsTemp = existingWSFlightIndicatorMap.get(wsFlightIndicators.getId());
++						if (wsFlightIndicatorsTemp.getSystemChangeInd() && !isSystemChange) {
++							wsFlightIndicatorsTemp.setSystemChangeInd(Boolean.FALSE);
++						}
++						//wsFlightIndicators.setPartitionKey(partitionKey);
++						wsFlightIndicatorsRepo.getEntityManager().merge(wsFlightIndicatorsTemp);
++					} else {
++						//wsFlightIndicators.setPartitionKey(partitionKey);
++						wsFlightIndicatorsRepo.getEntityManager().persist(wsFlightIndicators);
++					}
++				}
++				wsFlightIndicatorsRepo.getEntityManager().flush();
++			}
++
++
+ 			// Create dummy (activeInd as false) delay and movement timing record if not present in live 
+ 			for (Long flightId : entityIds) {
+ 				
+@@ -746,6 +808,15 @@
+ 		for (LiveFlightDetails liveFlightDetails : liveFlightDetailsList) {
+ 			liveFlightIdDetailsMap.put(liveFlightDetails.getFlightScheduleId(), liveFlightDetails);
+ 		}
++		
++		List<LiveFlightIndicators> liveFlightIndicatorList = liveFlightIndicatorRepo.findByFlightScheduleIds(liveModifiedFlightIds);
++		Map<Long, List<LiveFlightIndicators>> liveFlightIdIndicatorListMap = new HashMap<>();
++		for(LiveFlightIndicators liveFlightIndicators : liveFlightIndicatorList) {
++			if(!liveFlightIdIndicatorListMap.containsKey(liveFlightIndicators.getFlightScheduleId())) {
++				liveFlightIdIndicatorListMap.put(liveFlightIndicators.getFlightScheduleId(), new ArrayList<LiveFlightIndicators>());
++			}
++			liveFlightIdIndicatorListMap.get(liveFlightIndicators.getFlightScheduleId()).add(liveFlightIndicators);
++		}
+ 
+ 		WSContextHolder.clearTemporaryLiveContext();
+ 
+@@ -760,7 +831,8 @@
+ 			wsFlightIdEntityMap.put(wsFlightSchedule.getId(), wsFlightSchedule);
+ 		}
+ 		
+-		Map<Long, WSConflictWarnDataSO> checkConflictResultMap = checkConflictAndWarningFlight(liveModifiedFlightIds, liveFlightIdEntityMap, liveFlightIdDetailsMap, wsFlightIdEntityMap);
++		Map<Long, WSConflictWarnDataSO> checkConflictResultMap = checkConflictAndWarningFlight(liveModifiedFlightIds, liveFlightIdEntityMap, 
++				liveFlightIdDetailsMap, wsFlightIdEntityMap, liveFlightIdIndicatorListMap);
+ 		
+ 		//organize the REPO calls end
+ 		List<Long> conflictFlightIds = new ArrayList<>(checkConflictResultMap.keySet());
+@@ -775,6 +847,7 @@
+ 		Set<Long> deleteFltSchIds = new HashSet<Long>(); // list to delete flights
+ 		Set<Long> reinvokeFltSchIds = new HashSet<Long>(); // list to revoke flights
+ 		Set<Long> cancelFltSchIds = new HashSet<Long>(); // list to cancel flights
++		Set<Long> indChangedFltSchIds = new HashSet<Long>(); 
+ 		
+ 		for(Long flightId: conflictFlightIds){
+ 			
+@@ -909,6 +982,11 @@
+ 					flightDetailsMvtInfoSO.setTimeZone(FlightConstants.TIMEZONE_UTC);					
+ 					flightIdMvtInfoSOMap.put(flightDetailsMvtInfoSO.getFlightId(), flightDetailsMvtInfoSO);
+ 				}
++				
++				
++				if(changedDataMap.containsKey("indicatorId")) {
++					indChangedFltSchIds.add(flightId);
++				}
+ 			}
+ 		}
+ 		
+@@ -986,6 +1064,54 @@
+ 				//}
+ 			}
+ 		}
++		
++		
++		if(!CollectionUtils.isEmpty(indChangedFltSchIds)) {
++			
++			List<WSFlightIndicators> wsFlightIndicatorList = wsFlightIndicatorsRepo.findByFlightScheduleIds(new ArrayList<>(indChangedFltSchIds));
++			
++			Map<Long, Map<String, WSFlightIndicators>> wsFlightIdIndicatorMap = new HashMap<>();
++			for(WSFlightIndicators wsFlightIndicators : wsFlightIndicatorList) {
++				if(!wsFlightIdIndicatorMap.containsKey(wsFlightIndicators.getFlightScheduleId())) {
++					wsFlightIdIndicatorMap.put(wsFlightIndicators.getFlightScheduleId(), new HashMap<String, WSFlightIndicators>());
++				}
++				wsFlightIdIndicatorMap.get(wsFlightIndicators.getFlightScheduleId()).put(wsFlightIndicators.getIndicatorCode(), wsFlightIndicators);
++			}
++			
++			
++			for(Long flightId : indChangedFltSchIds) {
++				List<LiveFlightIndicators> liveIndicatorList = liveFlightIdIndicatorListMap.get(flightId);
++				Map<String, WSFlightIndicators> wsIndicatorCodeEntityMap = wsFlightIdIndicatorMap.get(flightId);
++				
++				List<FlightIndicatorsSO> flightIndicatorSOList = new ArrayList<>();
++				
++				for(LiveFlightIndicators liveFlightIndicators : liveIndicatorList) {
++					
++					if(!wsIndicatorCodeEntityMap.containsKey(liveFlightIndicators.getIndicatorCode())) {
++						FlightIndicatorsSO flightIndicatorsSO = new FlightIndicatorsSO();
++						ResultUtil.copyProperties(flightIndicatorsSO, liveFlightIndicators, Convertor.SPRING);
++						flightIndicatorSOList.add(flightIndicatorsSO);
++					} else {
++						wsIndicatorCodeEntityMap.remove(liveFlightIndicators.getIndicatorCode());
++					}
++				}
++				
++				for(WSFlightIndicators wsFlightIndicators : wsIndicatorCodeEntityMap.values()) {
++
++					FlightIndicatorsSO flightIndicatorsSO = new FlightIndicatorsSO();
++					ResultUtil.copyProperties(flightIndicatorsSO, wsFlightIndicators, Convertor.SPRING);
++					flightIndicatorsSO.setCrudIndicator(CrudIndicator.DELETED);
++					flightIndicatorSOList.add(flightIndicatorsSO);
++				}
++				
++				if(!CollectionUtils.isEmpty(flightIndicatorSOList)) {
++					FlightIndicatorsListSO flightIndicatorsListSO = new FlightIndicatorsListSO();
++					flightIndicatorsListSO.setFlightIndicatorsSOList(flightIndicatorSOList);
++					
++					flightIndicatorsService.saveFlightIndicators(flightIndicatorsListSO);
++				}
++			}
++		}
+ 	}
+ 	
+ 	private Map<String, Boolean> populateDetailsForMerge(Map<String, String[]> changedDataMap, FlightSchedule liveFlightSchedule, 
+@@ -1423,6 +1549,7 @@
+ 		
+ 		WSContextHolder.setTemporaryLiveContext();
+ 		List<LiveFlightSchedule> flightsModifiedInLive = liveFlightScheduleRepo.getChangedFlights(entityIds,WSContextHolder.getWorkspaceId());
++		//TODO - Need to check for indicator and forced coxx change although there is no change in flight schedule
+ 		
+ 		if(CollectionUtils.isEmpty(flightsModifiedInLive)){
+ 			WSContextHolder.clearTemporaryLiveContext();
+@@ -1443,6 +1570,15 @@
+ 		for (LiveFlightDetails liveFlightDetails : liveFlightDetailsList) {
+ 			liveFlightIdDetailsMap.put(liveFlightDetails.getFlightScheduleId(), liveFlightDetails);
+ 		}
++		
++		List<LiveFlightIndicators> liveFlightIndicatorList = liveFlightIndicatorRepo.findByFlightScheduleIds(liveModifiedFlightIds);
++		Map<Long, List<LiveFlightIndicators>> liveFlightIdIndicatorListMap = new HashMap<>();
++		for(LiveFlightIndicators liveFlightIndicators : liveFlightIndicatorList) {
++			if(!liveFlightIdIndicatorListMap.containsKey(liveFlightIndicators.getFlightScheduleId())) {
++				liveFlightIdIndicatorListMap.put(liveFlightIndicators.getFlightScheduleId(), new ArrayList<LiveFlightIndicators>());
++			}
++			liveFlightIdIndicatorListMap.get(liveFlightIndicators.getFlightScheduleId()).add(liveFlightIndicators);
++		}
+ 
+ 		WSContextHolder.clearTemporaryLiveContext();
+ 		
+@@ -1456,7 +1592,8 @@
+ 		logger.debug("checkConflictAndWarningFlight() {} time(ms) for reading live flight sch, live details and wks flight schedules from DB to check conflict for {} flights txn id - {}", 
+ 				new Object[] {(System.currentTimeMillis() - startTime), liveModifiedFlightIds, TransactionContextHolder.get().getTxnId()});
+ 		
+-		return checkConflictAndWarningFlight(liveModifiedFlightIds, liveFlightIdEntityMap, liveFlightIdDetailsMap, wsFlightIdEntityMap);
++		return checkConflictAndWarningFlight(liveModifiedFlightIds, liveFlightIdEntityMap, liveFlightIdDetailsMap, wsFlightIdEntityMap, 
++				liveFlightIdIndicatorListMap);
+ 		
+ 	}
+ 	
+@@ -1470,7 +1607,8 @@
+ 	 * @return
+ 	 */
+ 	private Map<Long, WSConflictWarnDataSO> checkConflictAndWarningFlight(List<Long> liveModifiedFlightIds,Map<Long, LiveFlightSchedule> liveFlightIdEntityMap, 
+-			Map<Long, LiveFlightDetails> liveFlightIdDetailsMap, Map<Long, WSFlightSchedule> wsFlightIdEntityMap) {
++			Map<Long, LiveFlightDetails> liveFlightIdDetailsMap, Map<Long, WSFlightSchedule> wsFlightIdEntityMap, 
++			Map<Long, List<LiveFlightIndicators>> liveFlightIdIndicatorListMap) {
+ 		
+ 		Long startTime = System.currentTimeMillis();
+ 		
+@@ -1478,6 +1616,7 @@
+ 		Map<Long, WSConflictWarnDataSO> flightIdWSConflictWarnDataSOMap = new HashMap<>();
+ 		WSContextHolder.setTemporaryLiveContext();
+ 		List<LiveFlightDelay> liveFlightDelayList = liveFlightDelayRepo.findByFlightScheduleIds(liveModifiedFlightIds);
++		
+ 		WSContextHolder.clearTemporaryLiveContext();
+ 		
+ 		Map<Long, List<LiveFlightDelay>> liveFlightIdDelayListMap = new HashMap<>();
+@@ -1487,7 +1626,7 @@
+ 			}
+ 			liveFlightIdDelayListMap.get(liveFlightDelay.getFlightScheduleId()).add(liveFlightDelay);
+ 		}
+-	
++		
+ 		List<WSFlightDetails> wsFlightDetailsList = wsFlightDetailsRepo.findAllByFlightScheduleIds(liveModifiedFlightIds);
+ 		Map<Long, WSFlightDetails> wsFlightIdDetailsMap = new HashMap<>();
+ 		for(WSFlightDetails wsFlightDetails : wsFlightDetailsList ){
+@@ -1503,6 +1642,15 @@
+ 			wsFlightIdDelayListMap.get(wsFlightDelay.getFlightScheduleId()).add(wsFlightDelay);
+ 		}
+ 		
++		List<WSFlightIndicators> wsFlightIndicatorList = wsFlightIndicatorsRepo.findByFlightScheduleIds(liveModifiedFlightIds)
++		Map<Long, List<WSFlightIndicators>> wsFlightIdIndicatorListMap = new HashMap<>();
++		for (WSFlightIndicators wsFlightIndicators : wsFlightIndicatorList) {
++			if(!wsFlightIdIndicatorListMap.containsKey(wsFlightIndicators.getFlightScheduleId())) {
++				wsFlightIdIndicatorListMap.put(wsFlightIndicators.getFlightScheduleId(),  new ArrayList<WSFlightIndicators>());
++			}
++			wsFlightIdIndicatorListMap.get(wsFlightIndicators.getFlightScheduleId()).add(wsFlightIndicators);
++		}
++		
+ 		Map<String, List<Long>> changedEntityIdMap = new  HashMap<String, List<Long>>();
+ 		changedEntityIdMap.put(FlightConstants.FLT_ENTY_TYPE, liveModifiedFlightIds);
+ 		
+@@ -1519,8 +1667,10 @@
+ 				Long flightId  = entry.getKey();
+ 				
+ 				if(wsAdvicedChangeSOMap.get(flightId) != null) {
+-					WSConflictWarnDataSO wsConflictWarnDataSO = checkConflictAndWarningForSingleFlight(liveFlightIdEntityMap.get(flightId), liveFlightIdDetailsMap.get(flightId), liveFlightIdDelayListMap.get(flightId),
+-							entry.getValue(), wsFlightIdDetailsMap.get(flightId), wsFlightIdDelayListMap.get(flightId), wsAdvicedChangeSOMap.get(flightId), conflictWarningAttributeMap);
++					WSConflictWarnDataSO wsConflictWarnDataSO = checkConflictAndWarningForSingleFlight(liveFlightIdEntityMap.get(flightId), liveFlightIdDetailsMap.get(flightId), 
++							liveFlightIdDelayListMap.get(flightId), liveFlightIdIndicatorListMap.get(flightId),
++							entry.getValue(), wsFlightIdDetailsMap.get(flightId), wsFlightIdDelayListMap.get(flightId), wsFlightIdIndicatorListMap.get(flightId),
++							wsAdvicedChangeSOMap.get(flightId), conflictWarningAttributeMap);
+ 					
+ 					flightIdWSConflictWarnDataSOMap.put(flightId, wsConflictWarnDataSO);
+ 					
+@@ -1572,9 +1722,10 @@
+ 		return conflictWarningAttributeMap;
+ 	}*/
+ 
+-	private WSConflictWarnDataSO checkConflictAndWarningForSingleFlight(LiveFlightSchedule liveFlightSchedule, LiveFlightDetails liveFlightDetails, List<LiveFlightDelay> liveFlightDelayList, 
+-			WSFlightSchedule wsFlightSchedule, WSFlightDetails wsFlightDetails, List<WSFlightDelay> wsFlightDelayList, List<WSAdvicedChangeSO> wsAdvicedChangeSOs,
+-			Map<String, Map<String, List<String>>> conflictWarningAttributeMap) {
++	private WSConflictWarnDataSO checkConflictAndWarningForSingleFlight(LiveFlightSchedule liveFlightSchedule, LiveFlightDetails liveFlightDetails, 
++			List<LiveFlightDelay> liveFlightDelayList, List<LiveFlightIndicators> liveFlightIndicatorList, 
++			WSFlightSchedule wsFlightSchedule, WSFlightDetails wsFlightDetails, List<WSFlightDelay> wsFlightDelayList, List<WSFlightIndicators> wsFlightIndicatorList,
++			List<WSAdvicedChangeSO> wsAdvicedChangeSOs, Map<String, Map<String, List<String>>> conflictWarningAttributeMap) {
+ 		logger.trace("FlightEntityAdvisor : checkConflictAndWarningFlight( live & ws schedula details)");
+ 	    WSConflictWarnDataSO wsConflictWarnDataSO = new WSConflictWarnDataSO();
+ 	    
+@@ -1634,6 +1785,11 @@
+ 			// TODO - !wsFlightSchedule.getDeleteInd() - remove is the condition once fixed from framework side
+ 			// TODO null != wsFlightSchedule && - Never be null confirm
+ 			boolean conflictPresent = false;
++			
++			//check for indicator conflict
++			conflictPresent = checkIndicatorConflict(liveFlightIndicatorList, wsFlightIndicatorList, 
++					attributeOldValuesMap, conflictWarnChangedDataMap, descriptionBuilderMap);
++			
+ 
+ 			for (String attributeName : conflictAttributeList) {
+ 				boolean attributeConflicted = checkConflictForAttributes(attributeName, liveFlightSchedule,
+@@ -2129,7 +2285,43 @@
+ 		return new List[] {depEstpDelayList, depActualDelayList, arrEstDelayList, arrActualDelayList};
+ 	}
+ 	
++	private boolean checkIndicatorConflict(List<LiveFlightIndicators> liveFlightIndicatorList, List<WSFlightIndicators> wsFlightIndicators, 
++			Map<String, Set<Object>> attributeOldValuesMap, Map<String, String[]> conflictWarnChangedDataMap, Map<String, Object[]> descriptionBuilderMap) {
++		
++		boolean isConflictPresent = false;
++		
++		List<String> liveIndicatorCodes = new ArrayList<>();
++		
++		for(LiveFlightIndicators liveFlightIndicators : liveFlightIndicatorList) {
++			liveIndicatorCodes.add(liveFlightIndicators.getIndicatorCode());
++		}
++		
++		Set<Object> indOldValueSet = attributeOldValuesMap.get("indicatorCodes");
++		if(indOldValueSet != null && indOldValueSet.size() >  0) {
++			List<String> oldIndList = (List<String>) indOldValueSet.iterator().next();
++			
++			
++			if(liveIndicatorCodes.size() >  0 || oldIndList.size() > 0) {
++				List<String> addedIndCodes = new ArrayList<>(liveIndicatorCodes);
++				addedIndCodes.removeAll(oldIndList);
++				
++				List<String> deletedIndCodes = new ArrayList<>(oldIndList);
++				deletedIndCodes.removeAll(liveIndicatorCodes);
++				
++				if(addedIndCodes.size() > 0 || deletedIndCodes.size() > 0) {
++					isConflictPresent = true;
++					
++					conflictWarnChangedDataMap.put("indicatorCodes", null);
++					descriptionBuilderMap.put("indicatorCodes", new Object[] {addedIndCodes, deletedIndCodes});
++				}
++				
++			}
++		}
++
++		return isConflictPresent;
++	}
+ 	
++	
+ 	private boolean checkConflictForAttributes(String attributeName, LiveFlightSchedule liveFlightSchedule, WSFlightSchedule wsFlightSchedule, 
+ 			Map<String, Set<Object>> attributeOldValuesMap, Map<String, String[]> conflictChangedDataMap, Map<String, Object[]> descriptionBuilderMap) {
+ 		
+@@ -2661,12 +2853,13 @@
+ 			Map<String, String> metaDataMap = publishMetaDataSO.getPublishMetaData();
+ 			
+ 			Set<Long> notifyFlightIds = new HashSet<>();
+-			Set<Long> createdFlightIds = new HashSet<Long>();
++			Set<Long> createdFlightIds = new HashSet<>();
+ 			
+ 			Map<Long, Set<String>> flightIdScheduleChangeTypeSetMap = new HashMap<>();			
+ 			Map<Long, Set<String>> flightIdMovementChangeTypeSetMap = new HashMap<>();
+ 			
+ 			boolean tailAssignmentActionFlag = false;
++			Set<Long> indicatorChangedFlightIds = new HashSet<>();
+ 			
+ 			for(WSAdvicedActionSO wsAdvicedActionSO: wsAdvicedActionSOList) {
+ 				
+@@ -2736,6 +2929,12 @@
+ 					case FlightConstants.TAIL_ASGMNT:
+ 						tailAssignmentActionFlag = true;
+ 						break;
++						
++					case "SaveFlightIndicators":
++						for (WSAdvicedChangeSO wsAdvicedChangeSO : wsAdvicedActionSO.getWsAdvicedChangeSOs()) {
++							indicatorChangedFlightIds.add(wsAdvicedChangeSO.getEntityId());
++						}
++						break;
+ 					
+ 					default:	
+ 				}
+@@ -2782,6 +2981,10 @@
+ 			if(!CollectionUtils.isEmpty(taUpdatedFlightIds)){
+ 				flightScheduleJobDS.updateRunIdAndNotifySlaveSystem(taUpdatedFlightIds, publishMetaDataSO.getWorkspaceId());
+ 			}
++			
++			if(!CollectionUtils.isEmpty(indicatorChangedFlightIds)) {
++				
++			}
+ 		}
+ 		
+ 		liveFlightScheduleRepo.flush();
+@@ -2789,6 +2992,64 @@
+ 		return publishResultSO;
+ 	}
+ 	
++	private void publishIndicatorChanges(List<Long> indicatorChangedFlightIds, WSPublishMetaDataSO wsPublishMetaDataSO) {
++		
++		WSContextHolder.setWorkspaceContext(wsPublishMetaDataSO.getWorkspaceId(), wsPublishMetaDataSO.getProfileType());
++		List<WSFlightIndicators> wsFlightIndicatorList = wsFlightIndicatorsRepo.findByFlightScheduleIds(indicatorChangedFlightIds);
++		WSContextHolder.clearWorkspaceContext();
++		
++		Map<Long, List<WSFlightIndicators> wsFlightIdIndicatorListMap = new HashMap<>();
++		for (WSFlightIndicators wsFlightIndicators : wsFlightIndicatorList) {
++			if(!wsFlightIdIndicatorListMap.containsKey(wsFlightIndicators.getFlightScheduleId())) {
++				wsFlightIdIndicatorListMap.put(wsFlightIndicators.getFlightScheduleId(),  new ArrayList<WSFlightIndicators>());
++			}
++			wsFlightIdIndicatorListMap.get(wsFlightIndicators.getFlightScheduleId()).add(wsFlightIndicators);
++		}
++		
++		List<FlightIndicatorsSO> flightIndicatorsSOs = flightIndicatorsService.getFlightIndicatorCodesForFlight(indicatorChangedFlightIds);
++		
++		
++		Map<Long, Map<String, FlightIndicatorsSO>> flightIdIndicatorCodeSOMap = new HashMap<>();
++		for(FlightIndicatorsSO flightIndicatorsSO : flightIndicatorsSOs) {
++			if(!flightIdIndicatorCodeSOMap.containsKey(flightIndicatorsSO.getFlightScheduleId())) {
++				flightIdIndicatorCodeSOMap.put(flightIndicatorsSO.getFlightScheduleId(), new HashMap<String, FlightIndicatorsSO>());
++			}
++			flightIdIndicatorCodeSOMap.get(flightIndicatorsSO.getFlightScheduleId()).put(flightIndicatorsSO.getIndicatorCode(), flightIndicatorsSO);
++		}
++		
++		for(Long flightId : indicatorChangedFlightIds) {
++			List<WSFlightIndicators> wsIndicatorList = wsFlightIdIndicatorListMap.get(flightId);
++			Map<String, FlightIndicatorsSO> indicatorCodeEntityMap = flightIdIndicatorCodeSOMap.get(flightId);
++			
++			List<FlightIndicatorsSO> flightIndicatorSOList = new ArrayList<>();
++			
++			for(WSFlightIndicators wsFlightIndicators : wsIndicatorList) {
++				
++				if(!indicatorCodeEntityMap.containsKey(wsFlightIndicators.getIndicatorCode())) {
++					FlightIndicatorsSO flightIndicatorsSO = new FlightIndicatorsSO();
++					ResultUtil.copyProperties(flightIndicatorsSO, wsFlightIndicators, Convertor.SPRING);
++					flightIndicatorSOList.add(flightIndicatorsSO);
++				} else {
++					indicatorCodeEntityMap.remove(wsFlightIndicators.getIndicatorCode());
++				}
++			}
++			
++			for(FlightIndicatorsSO flightIndicatorsSO : indicatorCodeEntityMap.values()) {
++				flightIndicatorsSO.setCrudIndicator(CrudIndicator.DELETED);
++				flightIndicatorSOList.add(flightIndicatorsSO);
++			}
++			
++			if(!CollectionUtils.isEmpty(flightIndicatorSOList)) {
++				FlightIndicatorsListSO flightIndicatorsListSO = new FlightIndicatorsListSO();
++				flightIndicatorsListSO.setFlightIndicatorsSOList(flightIndicatorSOList);
++				
++				flightIndicatorsService.saveFlightIndicators(flightIndicatorsListSO);
++			}
++
++		}
++		
++	}
++	
+ 	/**
+ 	 * 
+ 	 * @param createdFlightIds
+Index: flt-operations/flt-ops-flightdata/flt-ops-flightdata-entityws/src/main/java/com/tops/flight/operations/flightdata/domain/advisor/service/FlightIndicatorsServiceAdvisor.java
+===================================================================
+--- flt-operations/flt-ops-flightdata/flt-ops-flightdata-entityws/src/main/java/com/tops/flight/operations/flightdata/domain/advisor/service/FlightIndicatorsServiceAdvisor.java	(revision 0)
++++ flt-operations/flt-ops-flightdata/flt-ops-flightdata-entityws/src/main/java/com/tops/flight/operations/flightdata/domain/advisor/service/FlightIndicatorsServiceAdvisor.java	(working copy)
+@@ -0,0 +1,261 @@
++/**
++ * Copyright 2014 - 2018 Qatar Airways. All Rights Reserved.
++ *
++ * This Software is proprietary of Qatar Airways IT
++ * Unauthorized copying of this file, via any medium is strictly prohibited.
++ *
++ */
++package com.tops.flight.operations.flightdata.domain.advisor.service;
++
++import java.util.ArrayList;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.stereotype.Component;
++
++import com.qr.jadu.common.constants.CrudIndicator;
++import com.qr.jadu.validation.ValidationException;
++import com.tops.common.ws.api.annotations.WSAdvisor;
++import com.tops.common.ws.api.services.schemaobjects.WSAdvicedActionSO;
++import com.tops.common.ws.api.services.schemaobjects.WSAdvicedChangeSO;
++import com.tops.common.ws.api.services.schemaobjects.WSPreServiceSO;
++import com.tops.common.ws.api.services.schemaobjects.WSPublishMetaDataSO;
++import com.tops.flight.common.constants.FlightChangeType;
++import com.tops.flight.common.constants.FlightConstants;
++import com.tops.flight.operations.flightdata.domain.FlightHistoryDS;
++import com.tops.flight.operations.flightdata.domain.FlightIndicatorsDS;
++import com.tops.flight.operations.flightdata.domain.FlightOpsDS;
++import com.tops.flight.operations.flightdata.domain.FlightScheduleDS;
++import com.tops.flight.operations.flightdata.services.FlightHistoryService;
++import com.tops.flight.operations.flightdata.services.FlightIndicatorsService;
++import com.tops.flight.operations.flightdata.services.FlightOpsService;
++import com.tops.flight.operations.flightdata.services.schemaobjects.FlightIndicatorsListSO;
++import com.tops.flight.operations.flightdata.services.schemaobjects.FlightIndicatorsSO;
++import com.tops.flight.operations.flightdata.services.schemaobjects.FlightScheduleSO;
++
++/**
++ * @author Azad Achipra
++ *
++ */
++@WSAdvisor
++@Component
++public class FlightIndicatorsServiceAdvisor {
++
++	private Logger logger = LoggerFactory.getLogger(FlightIndicatorsServiceAdvisor.class);
++
++	@Autowired
++	private FlightScheduleDS flightScheduleDS;
++
++	@Autowired
++	private FlightHistoryDS flightHistoryDS;
++	
++	@Autowired
++	private FlightOpsDS flightOpsDS;
++	
++	@Autowired
++	private FlightOpsService flightOpsService;
++	
++	@Autowired
++	private FlightHistoryService flightHistoryService;
++
++	@Autowired
++	private FlightIndicatorsDS flightIndicatorsDS;
++	
++	@Autowired
++	private FlightIndicatorsService flightIndicatorsService;
++
++
++	public WSPreServiceSO doBeforeSaveFlightIndicators(FlightIndicatorsListSO flightIndicatorsListSO) {
++		logger.trace("FlightIndicatorsServiceAdvisor : doBeforeSaveFlightIndicators() ");
++
++		Long flightId = null;
++
++		if (flightIndicatorsListSO.getFlightIndicatorsSOList() != null && !flightIndicatorsListSO.getFlightIndicatorsSOList().isEmpty()) {
++
++			for (FlightIndicatorsSO flightIndicatorsSO : flightIndicatorsListSO.getFlightIndicatorsSOList()) {
++				flightId = flightIndicatorsSO.getFlightScheduleId();
++			}
++		}
++
++		FlightScheduleSO flightScheduleSO = flightScheduleDS.getFlightScheduleSOById(flightId);
++
++		List<FlightIndicatorsSO> existingFltIndList = flightIndicatorsDS.getFlightIndicators(flightId);
++
++		Object [] objArray = new Object[2];
++		objArray[0] = flightScheduleSO;
++		objArray[1] = existingFltIndList;
++
++		List<Long> entityIds = new ArrayList<Long>();
++		entityIds.add(flightId);
++		
++		Map<String, List<Long>> entityDetailsMap = new HashMap<String, List<Long>>();
++		entityDetailsMap.put(FlightConstants.FLT_ENTY_TYPE, entityIds);
++
++		WSPreServiceSO wsPreServiceSO = new WSPreServiceSO();
++		wsPreServiceSO.setWsChangedEntities(entityDetailsMap);
++		wsPreServiceSO.setReturnOfdoBefore(objArray);
++
++		return wsPreServiceSO;
++	}
++
++
++	public void doAfterSaveFlightIndicators(WSAdvicedActionSO advicedActionSO) {
++		logger.trace(" FlightIndicatorsServiceAdvisor : doAfterSaveFlightIndicators() ");
++
++		List<WSAdvicedChangeSO> wsAdvicedChangeSOs = new ArrayList<>();
++		
++		Object [] objArray = (Object []) advicedActionSO.getReturnOfBefore();
++		FlightScheduleSO flightScheduleSO = (FlightScheduleSO) objArray[0];
++		List<FlightIndicatorsSO> existingFltIndList = (List<FlightIndicatorsSO>) objArray[1];
++		FlightIndicatorsListSO newFlightIndicatorsListSO = (FlightIndicatorsListSO)advicedActionSO.getActualArguments()[0];
++		List<FlightIndicatorsSO> newFltIndList = newFlightIndicatorsListSO.getFlightIndicatorsSOList();
++
++		WSAdvicedChangeSO wsAdvicedChangeSO = null;
++		
++		Map<String, FlightIndicatorsSO> newIndicatorsMap = new HashMap<>();
++		for(FlightIndicatorsSO newIndicatorsSO : newFltIndList) {
++			if(!newIndicatorsSO.getCrudIndicator().equalsIgnoreCase(CrudIndicator.DELETED)) {
++				newIndicatorsMap.put(newIndicatorsSO.getIndicatorCode(), newIndicatorsSO);
++			}
++		}
++		
++		Map<String, FlightIndicatorsSO> existingIndicatorsMap = new HashMap<>();
++		for(FlightIndicatorsSO existingIndicatorsSO : existingFltIndList) {
++			existingIndicatorsMap.put(existingIndicatorsSO.getIndicatorCode(), existingIndicatorsSO);
++		}
++		
++		Set<String> deletedIndCodes = existingIndicatorsMap.keySet();
++		deletedIndCodes.removeAll(newIndicatorsMap.keySet());
++		
++		for(String deletedIndCode : deletedIndCodes) {
++			FlightIndicatorsSO deletedIndicatorsSO = existingIndicatorsMap.get(deletedIndCode);
++			wsAdvicedChangeSO = buildWSAdvicedChangeSO(FlightChangeType.INDICATOR_DELETED, flightScheduleSO, deletedIndicatorsSO, existingIndicatorsMap.keySet());
++			wsAdvicedChangeSOs.add(wsAdvicedChangeSO);
++			
++		}
++
++		Set<String> newIndCodes = newIndicatorsMap.keySet(); 
++		newIndCodes.removeAll(existingIndicatorsMap.keySet());
++
++		for(String newIndicatorCode : newIndCodes) {
++			FlightIndicatorsSO newIndicatorsSO = newIndicatorsMap.get(newIndicatorCode);
++			wsAdvicedChangeSO = buildWSAdvicedChangeSO(FlightChangeType.INDICATOR_ADDED, flightScheduleSO, newIndicatorsSO, existingIndicatorsMap.keySet());
++			wsAdvicedChangeSOs.add(wsAdvicedChangeSO);
++		}
++		
++		advicedActionSO.setWsAdvicedChangeSOs(wsAdvicedChangeSOs);
++		advicedActionSO.setActionChangeType("SaveFlightIndicators");
++	}
++	
++	
++	/**
++	 * 
++	 * @param flightChangeType
++	 * @param oldFlightScheduleSO
++	 * @param flightScheduleSO
++	 * @param oldFlightMovementInfoSo
++	 * @param newFlightMovementInfoSo
++	 * @param isFltMvt
++	 * @return
++	 */
++	private WSAdvicedChangeSO buildWSAdvicedChangeSO(FlightChangeType flightChangeType, FlightScheduleSO flightScheduleSO, FlightIndicatorsSO flightIndicatorsSO, 
++			Set<String> existingIndCodes) {
++		
++		Map<String, Object[]> entityChanges = new HashMap<String, Object[]>();
++		entityChanges.put("indicatorId", new Object[] {flightIndicatorsSO.getId()});
++		entityChanges.put("indicatorCodes", new Object[] {existingIndCodes});
++
++		WSAdvicedChangeSO wsAdvicedChangeSO =  FlightWSCommonHelper.buildWSAdvicedChangeSO(flightChangeType, null, flightScheduleSO);
++		wsAdvicedChangeSO.setEntityChanges(entityChanges);
++		String changeDescription = flightHistoryDS.getChangeDescription(flightChangeType, flightIndicatorsSO, null);
++		wsAdvicedChangeSO.setChangeDescription(changeDescription);
++		
++		return wsAdvicedChangeSO;
++	}
++	
++		
++	/**
++	 * @author T8609
++	 * @param advicedActionSO
++	 * @throws ValidationException
++	 */
++	public void onUndoSaveFlightIndicators(WSAdvicedActionSO advicedActionSO) throws ValidationException {
++		logger.trace(" FlightIndicatorsServiceAdvisor : onUndoSaveFlightIndicators() ");
++		
++		List<WSAdvicedChangeSO> wsAdvicedChangeSOs = advicedActionSO.getWsAdvicedChangeSOs(); 
++		
++		Long flightScheduleId = null;
++		List<Long> revokeIndIdList = new ArrayList<>();
++		List<Long> deleteIndIdList = new ArrayList<>();
++		
++		for(WSAdvicedChangeSO wsAdvicedChangeSO : wsAdvicedChangeSOs) {		
++			
++			Map<String, Object[]> entityChanges = wsAdvicedChangeSO.getEntityChanges();
++			flightScheduleId = wsAdvicedChangeSO.getEntityId();
++			FlightChangeType flightChangeType = FlightChangeType.valueOf(wsAdvicedChangeSO.getChangeType());
++			
++			Long indId = null;
++			if(entityChanges.get("indicatorId")[0] != null) {
++				indId = (Long)entityChanges.get("indicatorId")[0];
++				revokeIndIdList.add(indId);
++			} 
++			
++			switch(flightChangeType) {
++				case INDICATOR_ADDED:
++					deleteIndIdList.add(indId);
++					break;
++				
++				case INDICATOR_DELETED:
++					revokeIndIdList.add(indId);
++					break;
++					
++			}
++		}
++		
++		List<String> changeTypeList = new ArrayList<>();
++		changeTypeList.add(FlightChangeType.INDICATOR_ADDED.toString());
++		changeTypeList.add(FlightChangeType.INDICATOR_DELETED.toString());
++		
++		Map<Long, List<String>> flightIdChangeTypeListMap = new HashMap<Long, List<String>>();
++		flightIdChangeTypeListMap.put(flightScheduleId, changeTypeList);
++		
++		flightHistoryService.deleteLastTxnHistoriesBasedOnChangeTypeList(flightIdChangeTypeListMap);
++
++		List<FlightIndicatorsSO> flightIndicatorsSOs = flightIndicatorsService.getFlightIndicators(flightScheduleId);
++		
++		List<FlightIndicatorsSO> deleteFlightIndicatorsSOs = new ArrayList<>();
++		for(FlightIndicatorsSO flightIndicatorsSO : flightIndicatorsSOs) {
++			if(deleteIndIdList.contains(flightIndicatorsSO.getId())) {
++				flightIndicatorsSO.setCrudIndicator(CrudIndicator.DELETED);
++				deleteFlightIndicatorsSOs.add(flightIndicatorsSO);
++			}
++		}
++		
++		FlightIndicatorsListSO flightIndicatorsListSO = new FlightIndicatorsListSO();
++		flightIndicatorsListSO.setFlightIndicatorsSOList(deleteFlightIndicatorsSOs);
++		flightIndicatorsService.saveFlightIndicators(flightIndicatorsListSO);
++		
++		flightIndicatorsService.revokeDeletedIndicators(revokeIndIdList);
++		
++		flightIdChangeTypeListMap.get(flightScheduleId).remove(FlightChangeType.INDICATOR_ADDED.toString());
++		flightHistoryService.deleteLastTxnHistoriesBasedOnChangeTypeList(flightIdChangeTypeListMap);
++		
++	}
++	
++
++	//TO-DO both one will be removed after framework change
++	/**
++	 * 
++	 * @param advicedActionSO
++	 */
++	public boolean onPublishSaveFlightIndicators(WSAdvicedActionSO advicedActionSO, WSPublishMetaDataSO wSPublishMetaDataSO) {
++		logger.trace(" FlightOpsAdvisor : SaveFlightIndicators() ");
++		return true;
++	}
++
++}
+\ No newline at end of file
+Index: flt-operations/flt-ops-flightdata/flt-ops-flightdata-entityws/src/main/java/com/tops/flight/operations/flightdata/domain/entity/FlightIndicators.java
+===================================================================
+--- flt-operations/flt-ops-flightdata/flt-ops-flightdata-entityws/src/main/java/com/tops/flight/operations/flightdata/domain/entity/FlightIndicators.java	(revision 2871)
++++ flt-operations/flt-ops-flightdata/flt-ops-flightdata-entityws/src/main/java/com/tops/flight/operations/flightdata/domain/entity/FlightIndicators.java	(working copy)
+@@ -13,6 +13,9 @@
+ 
+ import com.tops.common.repo.api.annotations.SoftDelete;
+ import com.tops.common.repo.api.bean.TopsDateEntity;
++import com.tops.common.repo.api.bean.ws.TopsBaseWSEntity;
++import com.tops.common.ws.api.annotations.WSEntity;
++import com.tops.common.ws.api.base.WorkspaceBase;
+ 
+ /**
+  * @author 
+@@ -19,143 +22,58 @@
+  * @version 
+  * @created 
+  */
+-@Entity 
+-@Table(name="flt_flt_ind") 
++@WSEntity(entityType = "Flight",
++		entityTypeOrder = 1,
++		skipTransformation = false,
++		liveEntityClass = "com.tops.flight.operations.flightdata.domain.entity.live.LiveFlightIndicators",
++		wsEntityClass = "com.tops.flight.operations.flightdata.domain.entity.ws.WSFlightIndicators",
++		advisorClass = "com.tops.flight.operations.flightdata.domain.advisor.entity.FlightEntityAdvisor")
+ @SoftDelete
+-public class FlightIndicators extends TopsDateEntity {
++public abstract class  FlightIndicators extends TopsBaseWSEntity implements WorkspaceBase {
+ 
+-	/**
+-	 * 
+-	 */
+ 	private static final long serialVersionUID = 1L;
+ 
+-	@Id 
+-	@Column(name="id" , nullable = false, updatable = false) 
+-	@GeneratedValue(strategy = GenerationType.TABLE, generator = "flightIndicatorsSeq") 
+-	@TableGenerator(name = "flightIndicatorsSeq", table = "sys_uuid", pkColumnName = "UUID_CODE", pkColumnValue = "flt_flt_ind_seq", valueColumnName = "strt_num")
+-	private Long id;
+-
+-	/**
+-	 * Code of the Indicator from code master
+-	 */
+-	@Column(name="ind_code")
+-	private String indicatorCode;
+-
+-	/**
+-	 * Threshold Time
+-	 */
+-	@Column(name="trld_hrs")
+-	private  String thresholdTimeHour;
+-
+-	/**
+-	 * Threshold Time
+-	 */
+-	@Column(name="trld_mins")
+-	private  String thresholdTimeMinute;
+-
+-	@Column(name="flt_sch_id")
+-	private Long flightScheduleId;
+-
+-	/**
+-	 * Reason Code
+-	 */
+-	@Column(name="rsn_code")
+-	private String reasonCode;
+-
+-	/**
+-	 * Reason Text
+-	 */
+-	@Column(name="rsn_text")
+-	private String reasonTxt;
+-
+-	/**
+-	 * Type of the Indicator from master
+-	 */
+-	@Column(name="ind_typ")
+-	private String indicatorType;
+-
+-	public String getIndicatorCode(){
+-		return indicatorCode;
++	public static FlightIndicators createInstance() {
++		return WSFactory.getInstance(FlightIndicators.class);
+ 	}
+ 
+-	public void setIndicatorCode(String newVal){
+-		this.indicatorCode = newVal;
+-	}
++	public abstract String getIndicatorCode();
+ 
+-	public FlightIndicators(){
++	public abstract void setIndicatorCode(String newVal);
+ 
+-	}
++	public abstract Long getId();
+ 
+-	public Long getId(){
+-		return id;
+-	}
++	public abstract void setId(Long newVal);
+ 
+-	public void setId(Long newVal){
+-		this.id = newVal;
+-	}
++	public abstract String getTimeHour();
+ 
+-	public String getTimeHour() {
+-		return thresholdTimeHour;
+-	}
++	public abstract void setTimeHour(String time);
+ 
+-	public void setTimeHour(String time) {
+-		thresholdTimeHour = time;
+-	}
++	public abstract String getTimeMinute();
+ 
+-	public String getTimeMinute() {
+-		return thresholdTimeMinute;
+-	}
++	public abstract void setTimeMinute(String time);
+ 
+-	public void setTimeMinute(String time) {
+-		thresholdTimeMinute = time;
+-	}
++	public abstract String getThresholdTimeHour();
+ 
+-	public String getThresholdTimeHour() {
+-		return thresholdTimeHour;
+-	}
++	public abstract void setThresholdTimeHour(String thresholdTimeHour);
+ 
+-	public void setThresholdTimeHour(String thresholdTimeHour) {
+-		this.thresholdTimeHour = thresholdTimeHour;
+-	}
++	public abstract String getThresholdTimeMinute();
+ 
+-	public String getThresholdTimeMinute() {
+-		return thresholdTimeMinute;
+-	}
++	public abstract void setThresholdTimeMinute(String thresholdTimeMinute);
+ 
+-	public void setThresholdTimeMinute(String thresholdTimeMinute) {
+-		this.thresholdTimeMinute = thresholdTimeMinute;
+-	}
++	public abstract Long getFlightScheduleId();
+ 
+-	public Long getFlightScheduleId() {
+-		return flightScheduleId;
+-	}
++	public abstract void setFlightScheduleId(Long flightScheduleId);
+ 
+-	public void setFlightScheduleId(Long flightScheduleId) {
+-		this.flightScheduleId = flightScheduleId;
+-	}
++	public abstract String getReasonCode();
+ 
+-	public String getReasonCode() {
+-		return reasonCode;
+-	}
++	public abstract void setReasonCode(String reasonCode);
+ 
+-	public void setReasonCode(String reasonCode) {
+-		this.reasonCode = reasonCode;
+-	}
++	public abstract String getReasonTxt();
+ 
+-	public String getReasonTxt() {
+-		return reasonTxt;
+-	}
++	public abstract void setReasonTxt(String reasonTxt);
+ 
+-	public void setReasonTxt(String reasonTxt) {
+-		this.reasonTxt = reasonTxt;
+-	}
++	public abstract String getIndicatorType();
+ 
+-	public String getIndicatorType() {
+-		return indicatorType;
+-	}
+-
+-	public void setIndicatorType(String indicatorType) {
+-		this.indicatorType = indicatorType;
+-	}
+-
++	public abstract void setIndicatorType(String indicatorType);
+ }
+\ No newline at end of file
+Index: flt-operations/flt-ops-flightdata/flt-ops-flightdata-entityws/src/main/java/com/tops/flight/operations/flightdata/domain/entity/live/LiveFlightIndicators.java
+===================================================================
+--- flt-operations/flt-ops-flightdata/flt-ops-flightdata-entityws/src/main/java/com/tops/flight/operations/flightdata/domain/entity/live/LiveFlightIndicators.java	(revision 0)
++++ flt-operations/flt-ops-flightdata/flt-ops-flightdata-entityws/src/main/java/com/tops/flight/operations/flightdata/domain/entity/live/LiveFlightIndicators.java	(working copy)
+@@ -0,0 +1,155 @@
++package com.tops.flight.operations.flightdata.domain.entity.live;
++
++import com.tops.common.repo.api.annotations.SoftDelete;
++import com.tops.common.repo.api.bean.TopsDateEntity;
++import com.tops.flight.operations.flightdata.domain.entity.FlightIndicators;
++
++import javax.persistence.Column;
++import javax.persistence.Entity;
++import javax.persistence.GeneratedValue;
++import javax.persistence.GenerationType;
++import javax.persistence.Id;
++import javax.persistence.Table;
++import javax.persistence.TableGenerator;
++
++/**
++ * @author 
++ * @version 
++ * @created 
++ */
++@Entity 
++@Table(name="flt_flt_ind") 
++@SoftDelete
++public class LiveFlightIndicators extends FlightIndicators {
++
++	/**
++	 *
++	 */
++	private static final long serialVersionUID = 1L;
++
++	@Id
++	@Column(name="id" , nullable = false, updatable = false)
++	@GeneratedValue(strategy = GenerationType.TABLE, generator = "flightIndicatorsSeq")
++	@TableGenerator(name = "flightIndicatorsSeq", table = "sys_uuid", pkColumnName = "UUID_CODE", pkColumnValue = "flt_flt_ind_seq", valueColumnName = "strt_num")
++	private Long id;
++
++	/**
++	 * Code of the Indicator from code master
++	 */
++	@Column(name="ind_code")
++	private String indicatorCode;
++
++	/**
++	 * Threshold Time
++	 */
++	@Column(name="trld_hrs")
++	private  String thresholdTimeHour;
++
++	/**
++	 * Threshold Time
++	 */
++	@Column(name="trld_mins")
++	private  String thresholdTimeMinute;
++
++	@Column(name="flt_sch_id")
++	private Long flightScheduleId;
++
++	/**
++	 * Reason Code
++	 */
++	@Column(name="rsn_code")
++	private String reasonCode;
++
++	/**
++	 * Reason Text
++	 */
++	@Column(name="rsn_text")
++	private String reasonTxt;
++
++	/**
++	 * Type of the Indicator from master
++	 */
++	@Column(name="ind_typ")
++	private String indicatorType;
++
++	public String getIndicatorCode(){
++		return indicatorCode;
++	}
++
++	public void setIndicatorCode(String newVal){
++		this.indicatorCode = newVal;
++	}
++
++	public Long getId(){
++		return id;
++	}
++
++	public void setId(Long newVal){
++		this.id = newVal;
++	}
++
++	public String getTimeHour() {
++		return thresholdTimeHour;
++	}
++
++	public void setTimeHour(String time) {
++		thresholdTimeHour = time;
++	}
++
++	public String getTimeMinute() {
++		return thresholdTimeMinute;
++	}
++
++	public void setTimeMinute(String time) {
++		thresholdTimeMinute = time;
++	}
++
++	public String getThresholdTimeHour() {
++		return thresholdTimeHour;
++	}
++
++	public void setThresholdTimeHour(String thresholdTimeHour) {
++		this.thresholdTimeHour = thresholdTimeHour;
++	}
++
++	public String getThresholdTimeMinute() {
++		return thresholdTimeMinute;
++	}
++
++	public void setThresholdTimeMinute(String thresholdTimeMinute) {
++		this.thresholdTimeMinute = thresholdTimeMinute;
++	}
++
++	public Long getFlightScheduleId() {
++		return flightScheduleId;
++	}
++
++	public void setFlightScheduleId(Long flightScheduleId) {
++		this.flightScheduleId = flightScheduleId;
++	}
++
++	public String getReasonCode() {
++		return reasonCode;
++	}
++
++	public void setReasonCode(String reasonCode) {
++		this.reasonCode = reasonCode;
++	}
++
++	public String getReasonTxt() {
++		return reasonTxt;
++	}
++
++	public void setReasonTxt(String reasonTxt) {
++		this.reasonTxt = reasonTxt;
++	}
++
++	public String getIndicatorType() {
++		return indicatorType;
++	}
++
++	public void setIndicatorType(String indicatorType) {
++		this.indicatorType = indicatorType;
++	}
++
++}
+\ No newline at end of file
+Index: flt-operations/flt-ops-flightdata/flt-ops-flightdata-entityws/src/main/java/com/tops/flight/operations/flightdata/domain/repository/api/live/LiveFlightIndicatorRepo.java
+===================================================================
+--- flt-operations/flt-ops-flightdata/flt-ops-flightdata-entityws/src/main/java/com/tops/flight/operations/flightdata/domain/repository/api/live/LiveFlightIndicatorRepo.java	(revision 0)
++++ flt-operations/flt-ops-flightdata/flt-ops-flightdata-entityws/src/main/java/com/tops/flight/operations/flightdata/domain/repository/api/live/LiveFlightIndicatorRepo.java	(working copy)
+@@ -0,0 +1,32 @@
++/**
++ * Copyright 2014 - 2018 Qatar Airways. All Rights Reserved.
++ *
++ * This Software is proprietary of Qatar Airways IT
++ * Unauthorized copying of this file, via any medium is strictly prohibited.
++ *
++ */
++package com.tops.flight.operations.flightdata.domain.repository.api.live;
++
++import com.tops.common.repo.api.service.TopsRepository;
++import com.tops.flight.operations.flightdata.domain.entity.live.LiveFlightIndicators;
++import org.springframework.data.jpa.repository.Query;
++import org.springframework.data.repository.query.Param;
++import org.springframework.stereotype.Repository;
++
++import java.util.List;
++
++/**
++ * @author Azad Achipra
++ *
++ */
++@Repository
++public interface LiveFlightIndicatorRepo extends TopsRepository<LiveFlightIndicators, Long> {
++
++	/**
++	 * @param fltSchId
++	 * @return
++	 */
++	@Query("select lFltInd from LiveFlightIndicators lFltInd where lFltInd.flightScheduleId in(:fltSchIds)")
++	public List<LiveFlightIndicators> findByFlightScheduleIds(@Param("fltSchIds") List<Long> fltSchIds);
++
++}
+Index: flt-operations/flt-ops-flightdata/flt-ops-flightdata-entityws/src/main/java/com/tops/flight/operations/flightdata/domain/repository/api/ws/WSFlightIndicatorRepo.java
+===================================================================
+--- flt-operations/flt-ops-flightdata/flt-ops-flightdata-entityws/src/main/java/com/tops/flight/operations/flightdata/domain/repository/api/ws/WSFlightIndicatorRepo.java	(revision 0)
++++ flt-operations/flt-ops-flightdata/flt-ops-flightdata-entityws/src/main/java/com/tops/flight/operations/flightdata/domain/repository/api/ws/WSFlightIndicatorRepo.java	(working copy)
+@@ -0,0 +1,33 @@
++/**
++ * Copyright 2014 - 2018 Qatar Airways. All Rights Reserved.
++ *
++ * This Software is proprietary of Qatar Airways IT
++ * Unauthorized copying of this file, via any medium is strictly prohibited.
++ *
++ */
++package com.tops.flight.operations.flightdata.domain.repository.api.ws;
++
++import com.tops.common.repo.api.service.TopsRepository;
++import com.tops.common.ws.api.identifier.WorkspacePK;
++import com.tops.flight.operations.flightdata.domain.entity.ws.WSFlightHistory;
++import com.tops.flight.operations.flightdata.domain.entity.ws.WSFlightIndicators;
++import org.springframework.data.jpa.repository.Query;
++import org.springframework.data.repository.query.Param;
++import org.springframework.stereotype.Repository;
++
++import java.util.List;
++
++/**
++ * @author Azad Achipra
++ *
++ */
++@Repository
++public interface WSFlightIndicatorRepo extends TopsRepository<WSFlightIndicators, WorkspacePK> {
++
++	/**
++	 * @param fltSchId
++	 * @return
++	 */
++	@Query("select wsFltInd.wsEntityId from WSFlightIndicators wsFltInd where wsFltInd.flightScheduleId in(:fltSchIds)")
++	public List<WSFlightIndicators> findByFlightScheduleIds(@Param("fltSchIds") List<Long> fltSchIds);
++}
+Index: flt-operations/flt-ops-flightdata/flt-ops-flightdata-service-defs/src/main/java/com/tops/flight/operations/flightdata/services/FlightIndicatorsService.java
+===================================================================
+--- flt-operations/flt-ops-flightdata/flt-ops-flightdata-service-defs/src/main/java/com/tops/flight/operations/flightdata/services/FlightIndicatorsService.java	(revision 2871)
++++ flt-operations/flt-ops-flightdata/flt-ops-flightdata-service-defs/src/main/java/com/tops/flight/operations/flightdata/services/FlightIndicatorsService.java	(working copy)
+@@ -51,4 +51,6 @@
+ 	void flightCateringUpliftUpdatedEventHandler(List<TopsBaseEvent> eventList);
+ 	
+ 	Map<Long,List<FlightIndicatorsSO>> getFlightIndicatorsWithDescForMutipleFlights(Set<Long> flightScheduleIds);
++	
++	public void revokeDeletedIndicators(List<Long> indicatorIds);
+ }
+Index: flt-operations/flt-ops-flightdata/flt-ops-flightdata-services/src/main/java/com/tops/flight/operations/flightdata/domain/FlightHistoryDS.java
+===================================================================
+--- flt-operations/flt-ops-flightdata/flt-ops-flightdata-services/src/main/java/com/tops/flight/operations/flightdata/domain/FlightHistoryDS.java	(revision 2871)
++++ flt-operations/flt-ops-flightdata/flt-ops-flightdata-services/src/main/java/com/tops/flight/operations/flightdata/domain/FlightHistoryDS.java	(working copy)
+@@ -56,6 +56,8 @@
+ 	
+ 	public String getChangeDescription(FlightChangeType changeType, TripSO tripSO, TripSO oldTripSO);
+ 	
++	public String getChangeDescription(FlightChangeType flightChangeType, FlightIndicatorsSO newFlightIndicatorsSO, String oldThresholdTime);
++	
+ 	public List<String> getChangeTypesForDescription(String changeType);
+ 
+ 	public void createFlightHistory(List<FlightHistorySO> flightHistorySOs);
+Index: flt-operations/flt-ops-flightdata/flt-ops-flightdata-services/src/main/java/com/tops/flight/operations/flightdata/domain/FlightIndicatorsDS.java
+===================================================================
+--- flt-operations/flt-ops-flightdata/flt-ops-flightdata-services/src/main/java/com/tops/flight/operations/flightdata/domain/FlightIndicatorsDS.java	(revision 2871)
++++ flt-operations/flt-ops-flightdata/flt-ops-flightdata-services/src/main/java/com/tops/flight/operations/flightdata/domain/FlightIndicatorsDS.java	(working copy)
+@@ -51,5 +51,7 @@
+ 	void flightCateringUpliftUpdatedEventHandler(List<TopsBaseEvent> eventList);
+ 	
+ 	Map<Long,List<FlightIndicatorsSO>> getFlightIndicatorsWithDescForMutipleFlights(Set<Long> flightScheduleIds);
++	
++	public void revokeDeletedIndicators(List<Long> indicatorIds);
+ 
+ }
+\ No newline at end of file
+Index: flt-operations/flt-ops-flightdata/flt-ops-flightdata-services/src/main/java/com/tops/flight/operations/flightdata/services/impl/FlightIndicatorsServiceImpl.java
+===================================================================
+--- flt-operations/flt-ops-flightdata/flt-ops-flightdata-services/src/main/java/com/tops/flight/operations/flightdata/services/impl/FlightIndicatorsServiceImpl.java	(revision 2871)
++++ flt-operations/flt-ops-flightdata/flt-ops-flightdata-services/src/main/java/com/tops/flight/operations/flightdata/services/impl/FlightIndicatorsServiceImpl.java	(working copy)
+@@ -150,6 +150,17 @@
+ 	{
+ 		return domainService.getFlightIndicatorsWithDescForMutipleFlights(flightScheduleIds);
+ 	}
++	
++	@Override
++	@Transactional(value = "flight-transactionManager", readOnly = false)
++	@TopsService
++	@ServiceCode(code=31002)
++	public void revokeDeletedIndicators(List<Long> indicatorIds)
++	{
++		domainService.revokeDeletedIndicators(indicatorIds);
++	}
++	
++	
+ }
+ 
+ 
